@@ -97,6 +97,7 @@ async def loadLightScene(inf):
     return [0]
 
 async def getLightString(bulb_name):
+    if(bulb_name not in bulbNameToIP): return f"{bulb_name} not available"
     bulb_ip = bulbNameToIP[bulb_name]
     light = wizlight(bulb_ip)
     state = await light.updateState()
@@ -108,7 +109,17 @@ async def getLightString(bulb_name):
     else:
         red, green, blue = res
         return f"{bulb_name} is red:{red} green:{green} blue: {blue} brightness: {brightness}"
-        writer.writerow([bulb_name,red,green,blue,brightness])
+        #writer.writerow([bulb_name,red,green,blue,brightness])
+
+async def getLightDict(bulb_name):
+    if(bulb_name not in bulbNameToIP): return (dict(rgb=dict(r=255, g=0, b=0, a=0)),100)
+    light = wizlight(bulbNameToIP[bulb_name])
+    state = await light.updateState()
+    on = state.get_state()
+    res = state.get_rgb()
+    brightness = state.get_brightness()
+    red, green, blue = res
+    return (dict(rgb=dict(r=red, g=green, b=blue, a=0)),brightness)
 
 @app.callback(
     Output('last-light-output', 'children'),
@@ -196,8 +207,6 @@ def update_output(on_btn_clicks,off_btn_clicks,color_value,brightness,bulb_names
 
 
 
-
-
 bulbNameToMac = {
 
     "01-sr-group":"a8bb50e0c944",
@@ -247,13 +256,81 @@ async def bulbTest():
     return bulbNameToIP
     
 #bulbNameToIP = asyncio.run(bulbTest())
-bulbNameToIP = {'03-sl-group': '192.168.12.100', '09-front-group': '192.168.12.248', '10-front-group': '192.168.12.209', '08-front-group': '192.168.12.115', '05-front-group': '192.168.12.160', '15-front-group': '192.168.12.237', '01-sr-group': '192.168.12.224', '02-sr-group': '192.168.12.130', '12-front-group': '192.168.12.211', '06-front-group': '192.168.12.133', '11-front-group': '192.168.12.247', '16-front-group': '192.168.12.186', '07-front-group': '192.168.12.139', '13-front-group': '192.168.12.199', '14-front-group': '192.168.12.187'}
+bulbNameToIP = {
+ '01-sr-group': '192.168.12.224', 
+ '02-sr-group': '192.168.12.130',
+ '03-sl-group': '192.168.12.100',
+ '05-front-group': '192.168.12.159',
+ '06-front-group': '192.168.12.132',
+ '07-front-group': '192.168.12.139',
+ '08-front-group': '192.168.12.114', 
+ '09-front-group': '192.168.12.246', 
+ '10-front-group': '192.168.12.209', 
+ '11-front-group': '192.168.12.247',
+ '12-front-group': '192.168.12.211',
+ '13-front-group': '192.168.12.198', 
+ '14-front-group': '192.168.12.187',
+ '15-front-group': '192.168.12.236',
+ '16-front-group': '192.168.12.186'}
+
+bulbNameToIP = {} 
+ 
 print(sorted(list(bulbNameToIP.keys())))
 print(bulbNameToIP)
 #    await light.turn_off()
 bulbObjDict = {}
 for bulb_name in bulbNameToIP:
     bulbObjDict[bulb_name] = wizlight(bulbNameToIP[bulb_name])
+
+
+
+selected_last_call = set()
+
+
+@app.callback(
+    [Output('my-color-picker-1', 'value'),
+    Output("my-slider","value")],
+    [Input("checklist", "value"),
+    Input('my-color-picker-1', 'value'),
+    Input("my-slider","value"),
+    Input("lights-off-btn", "n_clicks")]
+    
+)
+def set_color_to_last_selected(bulb_names,old_rgb_dict,old_brightness,n_clicks):
+    print(ctx.triggered_id, "Triggered by"  )
+    global selected_last_call
+    selected_this_call = set(bulb_names)
+    newly_selected = selected_this_call.difference(selected_last_call)
+    print(f"newly_selected {newly_selected}")
+    selected_last_call = selected_this_call
+
+    
+
+    #If the lights are turned off. Turn them off.
+    if "lights-off-btn" == ctx.triggered_id:
+        print(f"XKCD If this was normal I'd be turning off the lights.")
+        x = asyncio.run(set_bulbs(bulb_names,ON=False))
+        return old_rgb_dict,old_brightness
+        return f'THE LIGHTS ARE OFF!'
+    #If the checklist is clicked; the only thing we want to do is set the color picker's color (not change the other elements).
+    elif "checklist" == ctx.triggered_id:
+        print(f"XKCD If this was normal I'd be messing with the color picker.")
+        if(len(newly_selected)==0): return old_rgb_dict,old_brightness
+        light_name = sorted(list(newly_selected))[0]
+        (rgb_dict,brightness) = asyncio.run(getLightDict(light_name))
+        #r = color_value['rgb']['r']
+        #g = color_value['rgb']['g']
+        #b = color_value['rgb']['b']
+        return rgb_dict, brightness
+    #This happens when someone clicks directly on the color picker. Start changing all the lights.
+    else:
+        print(f"XKCD If this was normal I'd be changing the lights to: {old_rgb_dict['rgb']}.")
+        x = asyncio.run(set_bulbs(bulb_names,red=old_rgb_dict['rgb']['r'],green=old_rgb_dict['rgb']['g'],blue=old_rgb_dict['rgb']['b'],brightness=old_brightness))
+        return old_rgb_dict,old_brightness
+
+#    dict(rgb=dict(r=255, g=0, b=0, a=0))
+    #return rgb_dict, brightness
+
 
 async def turn_off_bulb(bulb_name):
     light = wizlight(bulbNameToIP[bulb_name])
